@@ -1,0 +1,94 @@
+//Author: Prem Kumar Palanichamy
+
+//Jenkins Pipeline to handle the Continuous Integration and Continuous Deployment on Okteto.
+//Prerequisites: you should install the Custom tools plugin on Jenkins, ... 
+//...get the okteto CLI and Kubectl. You also need to get your Okteto Token and save it on a Jenkins Credential
+
+pipeline {
+
+    agent any
+    
+    environment {
+        GIT_PROJECT = 'https://github.com/devopshubproject/k8s-blue-green-deploy.git'
+        DOCKER_FILE = '/var/lib/jenkins/workspace/k8s-blue-green-deploy'
+        GIT_REPO_NAME = 'k8s-blue-green-deploy'
+        CONTAINER_IMAGE = 'premkumarpalanichamy/nginx'
+        NAMESPACE = 'premkumar-palanichamy'
+    }
+
+    stages {    
+        
+        stage('Prepare Environment with Okteto') {
+            steps {
+                withCredentials([string(credentialsId: 'okteto-token', variable: 'SECRET')]) {
+                    cleanWs ()
+                    sh '''
+                    okteto login --token ${SECRET}
+                    '''
+                }
+            }
+        }
+
+        stage ('Download the source code from GitHub') {
+            steps {
+                    sh '''
+                    git clone "${GIT_PROJECT}"
+                    '''
+            }
+        }
+
+        stage ('Build and Push Image with Okteto') {
+            steps {
+                withCredentials([
+                    string(credentialsId: 'okteto-token', variable: 'SECRET'),
+                    usernamePassword(credentialsId: 'dockerhub-cred', usernameVariable: 'USERNAME', passwordVariable: 'PASSWORD')
+                ]) {
+                    sh '''
+                    okteto login --token ${SECRET}
+                    cd "${DOCKER_FILE}/${GIT_REPO_NAME}/${FOLDER}"
+                    docker login -u $USERNAME -p $PASSWORD
+                    okteto build --tag ${CONTAINER_IMAGE}:${BUILD_TAG} --file dockerfile
+                    '''
+                }    
+            }
+        }
+            
+        stage('Deploy nginx to okteto <To Prove Success>') {
+            steps {
+                withCredentials([string(credentialsId: 'okteto-token', variable: 'SECRET')]) {
+                    script {
+                        if ($FILE == deployblue) {                    
+                            sh '''
+                            okteto login --token ${SECRET}
+                            cd "${DOCKER_FILE}/${GIT_REPO_NAME}"
+                            okteto namespace ${NAMESPACE}
+                            kubectl apply -f ${FILE}.yml
+                            kubectl apply -f svc.yml
+                            kubectl rollout status deployment.apps/nginx
+                        '''
+                    } else {
+                            sh '''
+                            okteto login --token ${SECRET}
+                            cd "${DOCKER_FILE}/${GIT_REPO_NAME}"
+                            okteto namespace ${NAMESPACE}
+                            kubectl apply -f deploygreen.yml
+                            kubectl apply -f svc.yml
+                            kubectl rollout status deployment.apps/nginx
+                        '''
+
+                    }
+                }
+            }
+        } 
+        
+    }
+    }
+post {
+    success {
+      slackSend(message: "Pipeline is successfully completed.")
+    }
+    failure {
+      slackSend(message: "Pipeline failed. Please check the logs.")
+        }
+    }  
+}

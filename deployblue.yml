@@ -1,0 +1,26 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  creationTimestamp: null
+  labels:
+    app: bgdeploy
+  name: bgdeploy
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: bgdeploy
+  strategy: {}
+  template:
+    metadata:
+      creationTimestamp: null
+      labels:
+        app: bgdeploy
+    spec:
+      containers:
+      - image: premkumarpalanichamy/nginx:1.16
+        name: nginx
+        ports:
+        - containerPort: 80
+        resources: {}
+status: {}
